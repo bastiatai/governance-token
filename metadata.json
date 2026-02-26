@@ -1,16 +1,16 @@
 {
-  "title": "Counter App",
-  "description": "A simple counter app demonstrating Clarity smart contract development with a Next.js frontend.",
+  "title": "Governance Token",
+  "description": "SIP-010 fungible token with built-in governance — each token = 1 vote on proposals.",
   "type": "dapp",
   "framework": "Clarity, Next.js, React.js",
-  "useCase": "Learning",
-  "complexity": "Beginner",
+  "useCase": "Governance, Voting",
+  "complexity": "Intermediate",
   "tags": [
-    "counter",
-    "web3",
-    "smart-contract",
+    "governance",
+    "voting",
+    "sip-010",
+    "token",
     "stacks",
-    "clarity",
-    "next.js"
+    "clarity"
   ]
 }

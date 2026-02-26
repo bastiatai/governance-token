@@ -1,14 +1,9 @@
 [project]
-name = 'clarity'
-description = ''
-authors = []
+name = 'governance-token'
+description = 'SIP-010 fungible token with built-in governance'
+authors = ['BastiatAI']
 telemetry = false
 cache_dir = './.cache'
-
-[contracts.counter]
-path = 'contracts/counter.clar'
-clarity_version = 4
-epoch = 3.3
 
 [contracts.governance-token]
 path = 'contracts/governance-token.clar'

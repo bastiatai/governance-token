@@ -1,65 +1,78 @@
-# Stacks Starter
+# Governance Token
 
-A minimal starter kit for building dApps on Stacks. Connect a wallet, interact with a smart contract, and understand the patterns.
+A SIP-010 fungible token with built-in governance on Stacks. Each token held = 1 vote on proposals.
 
-## Prerequisites
+Built by [@BastiatAI](https://x.com/BastiatAI) as part of Stacks DevRel — learning and building in public.
 
-- [Node.js 18+](https://nodejs.org)
-- [pnpm](https://pnpm.io/installation)
-- [Clarinet](https://docs.stacks.co/clarinet/overview) (for local contract development)
-- [Docker Desktop](https://www.docker.com/products/docker-desktop) (required for local devnet)
-- Basic knowledge of [React](https://react.dev), [TypeScript](https://www.typescriptlang.org/docs/), and [Stacks](https://docs.stacks.co)
+## What It Does
 
-Working with Claude Code? Check out the [Stacks Claude Code Plugin](https://github.com/kenny-stacks/stacks-claude-plugin).
+- **SIP-010 compliant** fungible token (`GOVN`, 6 decimals)
+- **Proposal creation** — any token holder can create proposals with a voting period
+- **Token-weighted voting** — your vote weight equals your token balance
+- **Double-vote protection** — one vote per address per proposal
+- **Time-bounded voting** — proposals have start/end blocks
+
+## Contract Functions
+
+### Token (SIP-010)
+| Function | Description |
+|----------|-------------|
+| `transfer` | Transfer tokens between principals |
+| `get-balance` | Check token balance |
+| `get-total-supply` | Total supply (1M tokens, 6 decimals) |
+| `get-name` / `get-symbol` / `get-decimals` | Token metadata |
+| `mint` | Owner-only minting |
+
+### Governance
+| Function | Description |
+|----------|-------------|
+| `create-proposal` | Create a new proposal (requires holding tokens) |
+| `vote` | Vote for/against a proposal (weight = your balance) |
+| `get-proposal` | Read proposal details |
+| `get-vote` | Check how someone voted |
+| `get-proposal-count` | Total proposals created |
 
 ## Quick Start
 
-There are two primary folders in the starter kit, `clarity` and `front-end`. `clarity` is your Clarinet smart contract structure, and `front-end` contains all of your front end files. Make sure you run the relevant commands to get everything started in the right folders.
-
-Alternatively, if you are using Claude Code, you can install the plugin (linked above) which has a built-in command to get your dev server started in the background. This is extremely helpful because it allows Clade Code to have visibility into your Clarinet devnet and your frontend.
-
 ```bash
-cd front-end
-pnpm install
-cp .env.example .env
+cd clarity
+npm install
+npx vitest run    # Run all tests (simnet, no Docker needed)
 ```
 
-Start local devnet (requires Docker):
+### Run Tests
 
 ```bash
-cd ../clarity && clarinet devnet start
+cd clarity && npx vitest run
 ```
 
-Wait for contracts to deploy (watch for block ~45), then in a new terminal:
-
-```bash
-pnpm --filter front-end dev
-```
-
-Open [http://localhost:3000](http://localhost:3000).
-
-See [docs/getting-started.md](docs/getting-started.md) for a detailed walkthrough.
+All 9 tests cover: SIP-010 compliance, minting permissions, proposal creation, voting mechanics, double-vote prevention, and token-weighted voting power.
 
 ## Project Structure
 
 ```
-stacks-starter/
-├── clarity/           # Clarity smart contracts
-│   ├── contracts/     # Contract source files
-│   ├── deployments/   # Deployment plans for devnet/testnet/mainnet
-│   └── tests/         # Contract unit tests
-├── front-end/         # Next.js application
-│   └── src/
-│       ├── app/           # Next.js app router pages
-│       ├── components/    # React components
-│       ├── constants/     # Contract addresses, network config
-│       ├── hooks/         # React Query hooks for contract calls
-│       └── lib/           # Utilities and API clients
-└── docs/              # Documentation
+governance-token/
+├── clarity/
+│   ├── contracts/
+│   │   └── governance-token.clar    # The governance token contract
+│   └── tests/
+│       └── governance-token.test.ts # 9 tests covering all functionality
+└── front-end/                       # Next.js frontend (starter template)
 ```
 
-## Documentation
+## What I Learned Building This
 
-- [Getting Started](docs/getting-started.md) - Setup tutorial and first steps
-- [Architecture Patterns](docs/patterns.md) - Wallet, contract, and React Query patterns
-- [Extending the Starter](docs/extending.md) - Replace the counter with your contract
+- Clarity's `merge` function is clean for updating map entries (used for vote tallying)
+- `ft-get-balance` returns a `uint` directly, not a `response` — no unwrap needed when reading balances inline
+- SIP-010 `transfer` needs both `tx-sender` and `contract-caller` checks for composability
+
+## Tech Stack
+
+- [Clarity](https://docs.stacks.co/reference/clarity) — Smart contract language
+- [Clarinet](https://github.com/stx-labs/clarinet) — Development toolkit
+- [@stacks/clarinet-sdk](https://github.com/stx-labs/vitest-environment-clarinet) — Simnet testing
+- [Vitest](https://vitest.dev) — Test runner
+
+## License
+
+MIT
