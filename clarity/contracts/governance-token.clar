@@ -12,6 +12,14 @@
 (define-constant err-already-voted (err u201))
 (define-constant err-voting-closed (err u202))
 (define-constant err-proposal-not-passed (err u203))
+(define-constant err-already-executed (err u204))
+(define-constant err-quorum-not-met (err u205))
+(define-constant err-voting-period-too-short (err u206))
+(define-constant err-no-snapshot (err u207))
+
+;; Governance parameters
+(define-constant min-voting-period u10)
+(define-constant quorum-threshold u1000000)
 
 ;; Token Configuration
 (define-fungible-token governance-token)
@@ -33,13 +41,21 @@
     votes-against: uint,
     start-block: uint,
     end-block: uint,
-    executed: bool
+    executed: bool,
+    snapshot-block: uint
   }
 )
 
 (define-map votes
   { proposal-id: uint, voter: principal }
   { vote: bool, amount: uint }
+)
+
+;; Balance snapshots: records token balance of each voter at proposal creation time
+;; Key: { proposal-id, holder } => snapshotted balance
+(define-map balance-snapshots
+  { proposal-id: uint, holder: principal }
+  uint
 )
 
 ;; SIP-010 Functions
@@ -95,8 +111,10 @@
       (proposal-id (+ (var-get proposal-count) u1))
       (start-block stacks-block-height)
       (end-block (+ stacks-block-height voting-period))
+      (proposer-balance (ft-get-balance governance-token tx-sender))
     )
-    (asserts! (> (ft-get-balance governance-token tx-sender) u0) err-insufficient-balance)
+    (asserts! (> proposer-balance u0) err-insufficient-balance)
+    (asserts! (>= voting-period min-voting-period) err-voting-period-too-short)
     (map-set proposals proposal-id {
       proposer: tx-sender,
       title: title,
@@ -105,10 +123,41 @@
       votes-against: u0,
       start-block: start-block,
       end-block: end-block,
-      executed: false
+      executed: false,
+      snapshot-block: stacks-block-height
     })
+    ;; Record the proposer's snapshot balance at creation time
+    (map-set balance-snapshots
+      { proposal-id: proposal-id, holder: tx-sender }
+      proposer-balance
+    )
     (var-set proposal-count proposal-id)
     (ok proposal-id)
+  )
+)
+
+;; Record a voter's balance snapshot for a proposal.
+;; Must be called by the voter before or at the snapshot-block of the proposal.
+;; This allows voters to lock in their eligible weight.
+(define-public (record-snapshot (proposal-id uint))
+  (let
+    (
+      (proposal (unwrap! (map-get? proposals proposal-id) err-proposal-not-found))
+      (voter-balance (ft-get-balance governance-token tx-sender))
+      (existing-snapshot (map-get? balance-snapshots { proposal-id: proposal-id, holder: tx-sender }))
+    )
+    ;; Only allow snapshot if the voter hasn't voted yet
+    (asserts! (is-none (map-get? votes { proposal-id: proposal-id, voter: tx-sender })) err-already-voted)
+    ;; Only allow snapshot during the voting period
+    (asserts! (<= stacks-block-height (get end-block proposal)) err-voting-closed)
+    (asserts! (> voter-balance u0) err-insufficient-balance)
+    ;; Only set snapshot once — prevents refreshing balance after transfer
+    (asserts! (is-none existing-snapshot) err-already-voted)
+    (map-set balance-snapshots
+      { proposal-id: proposal-id, holder: tx-sender }
+      voter-balance
+    )
+    (ok voter-balance)
   )
 )
 
@@ -116,28 +165,51 @@
   (let
     (
       (proposal (unwrap! (map-get? proposals proposal-id) err-proposal-not-found))
-      (voter-balance (ft-get-balance governance-token tx-sender))
       (existing-vote (map-get? votes { proposal-id: proposal-id, voter: tx-sender }))
+      ;; Use snapshotted balance, not live balance — prevents double-voting via token transfers
+      (snapshot-balance (unwrap! (map-get? balance-snapshots { proposal-id: proposal-id, holder: tx-sender }) err-no-snapshot))
     )
     (asserts! (is-none existing-vote) err-already-voted)
-    (asserts! (> voter-balance u0) err-insufficient-balance)
+    (asserts! (> snapshot-balance u0) err-insufficient-balance)
     (asserts! (>= stacks-block-height (get start-block proposal)) err-voting-closed)
     (asserts! (<= stacks-block-height (get end-block proposal)) err-voting-closed)
 
     (map-set votes
       { proposal-id: proposal-id, voter: tx-sender }
-      { vote: vote-for, amount: voter-balance }
+      { vote: vote-for, amount: snapshot-balance }
     )
 
     (map-set proposals proposal-id
       (merge proposal {
         votes-for: (if vote-for
-          (+ (get votes-for proposal) voter-balance)
+          (+ (get votes-for proposal) snapshot-balance)
           (get votes-for proposal)),
         votes-against: (if vote-for
           (get votes-against proposal)
-          (+ (get votes-against proposal) voter-balance))
+          (+ (get votes-against proposal) snapshot-balance))
       })
+    )
+    (ok true)
+  )
+)
+
+;; Execute a passed proposal (owner-gated stub — extend with actual execution logic)
+(define-public (execute-proposal (proposal-id uint))
+  (let
+    (
+      (proposal (unwrap! (map-get? proposals proposal-id) err-proposal-not-found))
+      (total-votes (+ (get votes-for proposal) (get votes-against proposal)))
+    )
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (not (get executed proposal)) err-already-executed)
+    ;; Voting must be closed before execution
+    (asserts! (> stacks-block-height (get end-block proposal)) err-voting-closed)
+    ;; Quorum: total votes must meet minimum participation threshold
+    (asserts! (>= total-votes quorum-threshold) err-quorum-not-met)
+    ;; Proposal must have passed (more FOR than AGAINST)
+    (asserts! (> (get votes-for proposal) (get votes-against proposal)) err-proposal-not-passed)
+    (map-set proposals proposal-id
+      (merge proposal { executed: true })
     )
     (ok true)
   )
@@ -149,6 +221,10 @@
 
 (define-read-only (get-vote (proposal-id uint) (voter principal))
   (map-get? votes { proposal-id: proposal-id, voter: voter })
+)
+
+(define-read-only (get-snapshot-balance (proposal-id uint) (holder principal))
+  (map-get? balance-snapshots { proposal-id: proposal-id, holder: holder })
 )
 
 (define-read-only (get-proposal-count)
